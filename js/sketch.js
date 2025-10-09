@@ -42,13 +42,14 @@ function setup() {
 
     if (response.method === 'connect') {
       order = response.order;
-      console.log("order", response.order);
-
+  
       if (iAmPlayer1()) {
         dealCardsOnce(handP1, ['mountain', 'lightning_bolt']);
+        websocket.send(JSON.stringify({ method: 'handCount', owner: 'Player1', count: handP1.length }))
       }
       if (iAmPlayer2()) {
         dealCardsOnce(handP2, ['forest', 'grizzly_bear']);
+        websocket.send(JSON.stringify({ method: 'handCount', owner: 'Player2', count: handP2.length }))
       }
 
       buildHands();
@@ -56,6 +57,11 @@ function setup() {
 
     if (response.method === 'numPlayers') {
       gameReadyToStart = (response.number === 2);
+      if (gameReadyToStart) {
+        const owner = iAmPlayer1() ? 'Player1' : 'Player2';
+        const count = iAmPlayer1() ? handP1.length : handP2.length;
+        websocket.send(JSON.stringify({ method: 'handCount', owner, count }))
+      }
     }
 
     if (response.method === 'disconnect') {
@@ -80,10 +86,38 @@ function setup() {
       const x = (width * 0.07) + idx * (cardW + spacing);
       const y = owner === 'Player1' ? (height * 0.86 - 46) : (height * 0.14 + 46);
 
+      const handIndex = targetArray.findIndex(card => !card.enteredBattlefield && card.owner === owner);
+      if (handIndex !== -1) targetArray.splice(handIndex, 1);
+      
       targetArray.push(
         new Card(x, y, cardW, cardH, name, owner, cardsMap[name], false)
       );
       targetArray[targetArray.length - 1].enteredBattlefield = true;
+    }
+
+    if (response.method === 'opponentHandCount') {
+      const { owner, count } = response;
+
+      const cardW = width * 0.06;
+      const cardH = height * 0.16;
+      const spacing = cardW * 0.3;
+
+      const targetArray = owner === 'Player1' ? cards1 : cards2;
+      const isMyPerspective = (owner === 'Player1' && iAmPlayer1()) || (owner === 'Player2' && iAmPlayer2());
+
+      if (isMyPerspective) return;
+
+      for (let i = targetArray.length -1; i >= 0; i--) {
+        if (!targetArray[i].enteredBattlefield && targetArray[i].owner === owner) {
+          targetArray.splice(i, 1);
+        }
+      }
+
+      for (let i = 0; i < count; i++) {
+        const x = (width * 0.07) + i * (cardW + spacing);
+        const y = owner === 'Player1' ? height * 0.86 : height * 0.14;
+        targetArray.push(new Card(x, y, cardW, cardH, 'unknown', owner, null, true));
+      }
     }
   };
 

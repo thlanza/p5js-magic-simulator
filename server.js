@@ -16,6 +16,7 @@ const wsServer = new WebSocketServer({ httpServer });
 
 let players = [];
 let activePlayer = '1';
+const lastHandCount = { '1': null, '2': null };
 
 function broadcast(payload) {
     const json = JSON.stringify(payload);
@@ -33,6 +34,13 @@ function getPlayerByConnection(connection) {
     return players.find(p => p.connection === connection);
 }
 
+function sendToOthers(senderId, payloadObj) {
+  const json = JSON.stringify(payloadObj);
+  for (const p of players) {
+    if (p.playerId === senderId) continue;
+    try { p.connection.send(json); } catch (e) { console.log('Erro mandando para o outro', e); }
+  }
+}
 
 wsServer.on("request", request => {
     const connection = request.accept(null, request.origin);
@@ -62,6 +70,34 @@ wsServer.on("request", request => {
 
     broadcast({ method: "numPlayers", number: players.length });
     broadcast({ method: "turn", activePlayer});
+
+     if (players.length === 2) {
+            const p1 = players.find(p => p.order === '1');
+            const p2 = players.find(p => p.order === '2');
+            if (p1 && p2 && lastHandCount['1'] != null) {
+                try {
+                    p2.connection.send(JSON.stringify({
+                        method: "opponentHandCount",
+                        owner: "Player1",
+                        count: lastHandCount['1']
+                    }))
+                } catch(error) {
+                    console.log("Erro ao enviar cache para Player 2", error);
+                }
+            }
+
+            if (p1 && p2 && lastHandCount['2'] != null) {
+                try {
+                    p1.connection.send(JSON.stringify({
+                        method: "opponentHandCount",
+                        owner: "Player2",
+                        count: lastHandCount['2']
+                    }))
+                } catch(error) {
+                    console.log("Erro ao enviar cache para Player1", error);
+                }
+            }
+        }
 
     connection.on('message', message => {
         let result;
@@ -115,21 +151,26 @@ wsServer.on("request", request => {
                 console.log("Erro no cardPlayed no servidor", error);
             }
         }
-    })
+        if (result.method === "handCount") {
+            const me = getPlayerByConnection(connection);
+            if (!me) return;
+            lastHandCount[me.order] = result.count;
+            sendToOthers(me.playerId, {
+                method: "opponentHandCount",
+                owner: result.owner,
+                count: result.count
+            })
+    }
+})
 
     connection.on('close', () => {
         const leaving = getPlayerByConnection(connection);
         if (leaving) {
-            players - players.filter(p => p.playerId !== leaving.playerId);
+            players = players.filter(p => p.playerId !== leaving.playerId);
         }
-
-        // If active player left, give turn to whoever remains (default '1')
-    if (players.length === 1) {
-      activePlayer = players[0].order; // whoever is left
-    }
-    if (players.length === 0) {
-      activePlayer = '1'; // reset room for next game
-    }
+        if (players.length === 1) activePlayer = players[0].order; 
+        if (players.length === 0) activePlayer = '1';
+  
         broadcast({ method: "disconnect", playerId: leaving?.playerId });
         broadcast({ method: "numPlayers", number: players.length });
         broadcast({ method: "turn", activePlayer });
