@@ -1,5 +1,7 @@
+import { CONSTANTS } from "./CONSTANTS.js";
 import { Card } from "./models/Card.js";
 import { MyWebsocket } from "./Websocket/MyWebsocket.js";
+
 
 const mySketch = (p) => {
   let handP1 = [];
@@ -14,7 +16,11 @@ const mySketch = (p) => {
   let imgForest, imgBear, imgMountain, imgBolt, imgBack;
   let cardsMap;
 
-  const endTurnBtn = { x: 320, y: 10, w: 160, h: 60 };
+  const endTurnBtn = { x: CONSTANTS.BUTTON_MEASUREMENTS.x, 
+    y: CONSTANTS.BUTTON_MEASUREMENTS.y, 
+    w: CONSTANTS.BUTTON_MEASUREMENTS.w, 
+    h: CONSTANTS.BUTTON_MEASUREMENTS.h 
+  };
 
   const iAmPlayer1 = () => order === '1';
   const iAmPlayer2 = () => order === '2';
@@ -199,8 +205,18 @@ const mySketch = (p) => {
 
   let box1, box2;
   function initBoxes() {
-    box1 = { x: p.width*0.05, y: p.height*0.08, w: p.width*0.9,  h: p.height*0.42 };
-    box2 = { x: p.width*0.05, y: p.height*0.50, w: p.width*0.9,  h: p.height*0.42 };
+    box1 = { 
+      x: p.width* CONSTANTS.COEFICIENTE_BOXES.box1.x, 
+      y: p.height* CONSTANTS.COEFICIENTE_BOXES.box1.y, 
+      w: p.width* CONSTANTS.COEFICIENTE_BOXES.box1.w,  
+      h: p.height* CONSTANTS.COEFICIENTE_BOXES.box1.h 
+    };
+    box2 = { 
+      x: p.width* CONSTANTS.COEFICIENTE_BOXES.box2.x, 
+      y: p.height* CONSTANTS.COEFICIENTE_BOXES.box2.y, 
+      w: p.width* CONSTANTS.COEFICIENTE_BOXES.box2.w,  
+      h: p.height* CONSTANTS.COEFICIENTE_BOXES.box2.h
+    };
   }
   function drawBoxes() {
     p.fill(130, 139, 20); p.stroke(0); p.rect(box1.x, box1.y, box1.w, box1.h, 10);
@@ -208,7 +224,7 @@ const mySketch = (p) => {
   }
 
   function drawTurnBanner() {
-    const label = activePlayer ? `Turno: Hora do ${activePlayer}` : 'Turno: Espere sua vez.';
+    const label = activePlayer ? `Turno: Hora do Jogador ${activePlayer}` : 'Turno: Espere sua vez.';
     const mine  = order ? `Você é o jogador ${order}${iAmActive() ? ' (ACTIVE)' : ''}` : 'Você é? ?';
 
     p.noStroke();
@@ -236,7 +252,7 @@ const mySketch = (p) => {
     p.fill(255);
     p.textSize(14);
     p.textAlign(p.CENTER, p.CENTER);
-    p.text(isEnabled ? 'End Turn (T)' : 'Waiting...', endTurnBtn.x + endTurnBtn.w/2, endTurnBtn.y + endTurnBtn.h/2);
+    p.text(isEnabled ? 'Finalizar Turno (T)' : 'Esperando...', endTurnBtn.x + endTurnBtn.w/2, endTurnBtn.y + endTurnBtn.h/2);
     p.pop();
   }
 

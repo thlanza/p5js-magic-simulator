@@ -2,6 +2,7 @@ const http = require('http');
 const express = require("express");
 const uuid = require('uuid').v4
 const { server: WebSocketServer } = require('websocket');
+const chokidar = require('chokidar');
 
 const app = express();
 app.use("/js", express.static(__dirname + '/js'));
@@ -17,6 +18,8 @@ const wsServer = new WebSocketServer({ httpServer });
 let players = [];
 let activePlayer = '1';
 const lastHandCount = { '1': null, '2': null };
+
+const lrClients = new Set();
 
 function broadcast(payload) {
     const json = JSON.stringify(payload);
@@ -43,6 +46,16 @@ function sendToOthers(senderId, payloadObj) {
 }
 
 wsServer.on("request", request => {
+    const path = request.resourceURL?.pathname || '/';
+
+    if (path === '/livereload') {
+        const conn = request.accept(null, request.origin);
+        lrClients.add(conn)/
+        console.log("Livereload client connected");
+        conn.on('close', () => lrClients.delete(conn));
+        return;
+    };
+
     const connection = request.accept(null, request.origin);
 
     console.log("request accepted");
@@ -177,5 +190,23 @@ wsServer.on("request", request => {
     })   
 });
 
+const watcher = chokidar.watch(
+    [
+        __dirname + '/index.html',
+        __dirname + '/js',
+        __dirname + '/assets'
+    ],
+    { ignoreInitial: true }
+);
 
+const pingReload = (file) => {
+    const json = JSON.stringify({ type: 'reload', file });
+    for (const conn of lrClients) {
+        try { conn.sendUTF(json); } catch(e) { }
+    }
+}
+
+watcher.on('add', pingReload);
+watcher.on('change', pingReload);
+watcher.on('unlink', pingReload);
 
