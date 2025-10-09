@@ -1,17 +1,19 @@
 import { CONSTANTS } from "./CONSTANTS.js";
 import { Card } from "./models/Card.js";
+import { UI } from "./UI/ui.js";
 import { MyWebsocket } from "./Websocket/MyWebsocket.js";
-
 
 const mySketch = (p) => {
   let handP1 = [];
   let handP2 = [];
   let cards1 = []; 
   let cards2 = []; 
+  let ui;
   let order = null;
   let activePlayer = null;
   let socket;
   let gameReadyToStart = false;
+  let box1, box2;
 
   let imgForest, imgBear, imgMountain, imgBolt, imgBack;
   let cardsMap;
@@ -36,6 +38,7 @@ const mySketch = (p) => {
 
   p.setup = function () {
     p.createCanvas(p.windowWidth, p.windowHeight);
+    ui = new UI(p);
 
     cardsMap = {
       forest: imgForest,
@@ -115,9 +118,36 @@ const mySketch = (p) => {
     initBoxes();
   };
 
+
+  function initBoxes() {
+    box1 = { 
+      x: p.width* CONSTANTS.COEFICIENTE_BOXES.box1.x, 
+      y: p.height* CONSTANTS.COEFICIENTE_BOXES.box1.y, 
+      w: p.width* CONSTANTS.COEFICIENTE_BOXES.box1.w,  
+      h: p.height* CONSTANTS.COEFICIENTE_BOXES.box1.h 
+    };
+    box2 = { 
+      x: p.width* CONSTANTS.COEFICIENTE_BOXES.box2.x, 
+      y: p.height* CONSTANTS.COEFICIENTE_BOXES.box2.y, 
+      w: p.width* CONSTANTS.COEFICIENTE_BOXES.box2.w,  
+      h: p.height* CONSTANTS.COEFICIENTE_BOXES.box2.h
+    };
+  }
+
   p.draw = function () {
     p.background(220);
-    drawBoxes();
+    ui.drawBoxes(box1, box2);
+    ui.drawTurnBanner({
+      activePlayer,
+      order,
+      isActive: iAmActive()
+    });
+    ui.drawEndTurnButton({
+      btn: endTurnBtn,
+      isEnabled: iAmActive() && gameReadyToStart,
+      mouseX: p.mouseX,
+      mouseY: p.mouseY
+    })
 
     if (!order) return;
 
@@ -125,9 +155,6 @@ const mySketch = (p) => {
       c.hover(p.mouseX, p.mouseY);
       c.display(); 
     }
-
-    drawTurnBanner();
-    drawEndTurnButton();
   };
 
   p.keyPressed = function () {
@@ -137,7 +164,9 @@ const mySketch = (p) => {
   };
 
   p.mouseClicked = function () {
+    const isEnabled = iAmActive() && gameReadyToStart;
     if (
+      isEnabled &&
       p.mouseX >= endTurnBtn.x && p.mouseX <= endTurnBtn.x + endTurnBtn.w &&
       p.mouseY >= endTurnBtn.y && p.mouseY <= endTurnBtn.y + endTurnBtn.h
     ) {
@@ -199,63 +228,6 @@ const mySketch = (p) => {
     }    
   }
 
-
-
-
-
-  let box1, box2;
-  function initBoxes() {
-    box1 = { 
-      x: p.width* CONSTANTS.COEFICIENTE_BOXES.box1.x, 
-      y: p.height* CONSTANTS.COEFICIENTE_BOXES.box1.y, 
-      w: p.width* CONSTANTS.COEFICIENTE_BOXES.box1.w,  
-      h: p.height* CONSTANTS.COEFICIENTE_BOXES.box1.h 
-    };
-    box2 = { 
-      x: p.width* CONSTANTS.COEFICIENTE_BOXES.box2.x, 
-      y: p.height* CONSTANTS.COEFICIENTE_BOXES.box2.y, 
-      w: p.width* CONSTANTS.COEFICIENTE_BOXES.box2.w,  
-      h: p.height* CONSTANTS.COEFICIENTE_BOXES.box2.h
-    };
-  }
-  function drawBoxes() {
-    p.fill(130, 139, 20); p.stroke(0); p.rect(box1.x, box1.y, box1.w, box1.h, 10);
-    p.fill(170, 160, 150); p.stroke(0); p.rect(box2.x, box2.y, box2.w, box2.h, 10);
-  }
-
-  function drawTurnBanner() {
-    const label = activePlayer ? `Turno: Hora do Jogador ${activePlayer}` : 'Turno: Espere sua vez.';
-    const mine  = order ? `Você é o jogador ${order}${iAmActive() ? ' (ACTIVE)' : ''}` : 'Você é? ?';
-
-    p.noStroke();
-    p.fill(0, 0, 0, 160);
-    p.rect(10, 10, 290, 60, 8);
-
-    p.fill(255);
-    p.textSize(16);
-    p.textAlign(p.LEFT, p.TOP);
-    p.text(label, 20, 18);
-    p.text(mine, 20, 42);
-  }
-
-  function drawEndTurnButton() {
-    const isEnabled = iAmActive() && gameReadyToStart;
-    const isHover =
-      p.mouseX >= endTurnBtn.x && p.mouseX <= endTurnBtn.x + endTurnBtn.w &&
-      p.mouseY >= endTurnBtn.y && p.mouseY <= endTurnBtn.y + endTurnBtn.h;
-
-    p.push();
-    p.noStroke();
-    p.fill(isEnabled ? (isHover ? 30 : 50) : 90, 140, 40, isEnabled ? 230 : 120);
-    p.rect(endTurnBtn.x, endTurnBtn.y, endTurnBtn.w, endTurnBtn.h, 8);
-
-    p.fill(255);
-    p.textSize(14);
-    p.textAlign(p.CENTER, p.CENTER);
-    p.text(isEnabled ? 'Finalizar Turno (T)' : 'Esperando...', endTurnBtn.x + endTurnBtn.w/2, endTurnBtn.y + endTurnBtn.h/2);
-    p.pop();
-  }
-
   p.windowResized = function () {
     p.resizeCanvas(p.windowWidth, p.windowHeight);
     initBoxes();
@@ -268,5 +240,4 @@ const mySketch = (p) => {
   }
 };
 
-// boot it
 new p5(mySketch);
