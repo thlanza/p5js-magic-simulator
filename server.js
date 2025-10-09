@@ -1,99 +1,140 @@
 const http = require('http');
-const app = require('express')();
 const express = require("express");
 const uuid = require('uuid').v4
+const { server: WebSocketServer } = require('websocket');
 
+const app = express();
 app.use("/js", express.static(__dirname + '/js'));
 app.use('/assets', express.static(__dirname + '/assets'));
 app.get("/", (req, res) => res.sendFile(__dirname + "/index.html"));
 
-const CLIENT_PORT = process.env.CLIENT_PORT || 5500;
-app.listen(CLIENT_PORT, () => console.log(`Client Port, escutando na porta ${CLIENT_PORT}`));
+const PORT = process.env.PORT || 5500;
+const httpServer = http.createServer(app);
+httpServer.listen(PORT, () => console.log(`HTTP escutando na porta ${PORT}`));
 
-const websocketServer = require("websocket").server;
-const httpServer = http.createServer();
-
-const SERVER_PORT = process.env.SERVER_PORT || 9090;
-httpServer.listen(SERVER_PORT, () => console.log(`Server Port, escutando na porta ${SERVER_PORT}`));
-
+const wsServer = new WebSocketServer({ httpServer });
 
 let players = [];
-let playerInfo = {};
+let activePlayer = '1';
 
-const wsServer = new websocketServer({
-    "httpServer": httpServer
-})
+function broadcast(payload) {
+    const json = JSON.stringify(payload);
+    for (const player of players) {
+        try { 
+            player.connection.send(json);
+        }
+        catch (e) { 
+            console.log('Broadcast error', e); 
+        }
+    }
+}
+
+function getPlayerByConnection(connection) {
+    return players.find(p => p.connection === connection);
+}
+
 
 wsServer.on("request", request => {
     const connection = request.accept(null, request.origin);
 
-    connection.on("close", () => {
-        players.forEach(player => {
-            if (player.playerId !== playerId) {
-                const payload = {
-                    "method": "disconnect",
-                    "playerId": playerId
-                }
-                player.connection.send(JSON.stringify(payload));
-            }
-        })
-        players = players.filter(player => player.playerId !== playerId);
-    });
+    console.log("request accepted");
 
-    const playerId = randomPlayerId();
-
-    playerInfo = {
-        "connection": connection,
-        "playerId": playerId,
-    }
-
-    players.push(playerInfo);
-
-    if (players.length > 2) {
-        console.log("Sala cheia. Espere um pouco.");
+    if (players.length >= 2) {
+        connection.send(JSON.stringify({ method: "roomFull" }));
+        connection.close();
         return;
     }
 
-    // connection.on("message", message => {
-    //     const result = JSON.parse(message.utf8Data);
+    const playerId = uuid();
+    const order = players.length === 0 ? "1" : "2";
+    let playerInfo = { playerId, order, connection };
+    players.push(playerInfo);
 
-    //     if (result.method === "currentPlayers") {
-    //         players.forEach(player => {
-    //             if (player.playerId !== playerId) {
-    //                 const payload = {
-    //                     "method": "currentPlayers",
-    //                     "playerId": player.playerId,
-    //                 }
-    //                 connection.send(JSON.stringify(payload));
-    //             }
-    //         })
-    //     }
-    // })
+    connection.send(JSON.stringify({
+        method: "connect",
+        playerId,
+        order
+    }));
 
-   
+    if (players.length === 2 && (activePlayer !== '1' && activePlayer !== '2')) {
+        activePlayer = '1';
+    }
 
-    const payload = {
-        "method": "connect",
-        "playerId": playerId,
-    };
+    broadcast({ method: "numPlayers", number: players.length });
+    broadcast({ method: "turn", activePlayer});
 
-    connection.send(JSON.stringify(payload));
+    connection.on('message', message => {
+        let result;
+        try {
+            result = JSON.parse(message.utf8Data);
+        } catch(error) {
+            console.log("JSON inválido vindo do cliente", error);
+            return;
+        }
 
-    players.forEach(player => {
-        const payload = {
-            "method": "numPlayers",
-            "number": players.length
-        };
-        player.connection.send(JSON.stringify(payload));
+        if (result.method === "firstHand") {
+            const me = getPlayerByConnection(connection);
+            const otherPlayers = players.filter(p => p.playerId !== playerId);
+            for (const other of otherPlayers) {
+                const payload = {
+                    method: 'currentPlayers',
+                    player: me.playerId
+                };
+                try {
+                    other.connection.send(JSON.stringify(payload));
+                } catch(error) {
+                    console.log("Erro no onMessage do servidor", error);
+                }
+            }
+        }
+
+        if (result.method === "endTurn") {
+            const me = getPlayerByConnection(connection);
+            if (!me) return;
+
+            if (players.length < 2) return;
+
+            if (me.order !== activePlayer) return;
+
+            activePlayer = (activePlayer === '1') ? '2': '1';
+            broadcast({ method: 'turn', activePlayer});
+        }
+
+        if (result.method === "playCard") {
+            const me = getPlayerByConnection(connection);
+            if (!me) return;
+            const other = players.filter(p => p.playerId !== me.playerId);
+            const payload = JSON.stringify({
+                method: "cardPlayed",
+                owner: result.owner,
+                name: result.name
+            });
+            try {
+                other[0].connection.send(payload);
+            } catch(error) {
+                console.log("Erro no cardPlayed no servidor", error);
+            }
+        }
     })
 
+    connection.on('close', () => {
+        const leaving = getPlayerByConnection(connection);
+        if (leaving) {
+            players - players.filter(p => p.playerId !== leaving.playerId);
+        }
 
-
-   
+        // If active player left, give turn to whoever remains (default '1')
+    if (players.length === 1) {
+      activePlayer = players[0].order; // whoever is left
+    }
+    if (players.length === 0) {
+      activePlayer = '1'; // reset room for next game
+    }
+        broadcast({ method: "disconnect", playerId: leaving?.playerId });
+        broadcast({ method: "numPlayers", number: players.length });
+        broadcast({ method: "turn", activePlayer });
+    })   
 });
 
-function randomPlayerId() {
-    return uuid();
-}
 
 

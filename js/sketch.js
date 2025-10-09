@@ -1,266 +1,276 @@
-let cards1 = [];
-let cards2 = [];
-let flippedCards = [];
-let matchedCards = [];
-const colNum = 4;
-const rowNum = 4;
-let selected = [];
-let img1, img2, img3, img4, img5, img6, img7, img8;
-let timer = -1;
-let delay = 60;
-let cardsThatEnteredBattlefield = [];
-let initialHandPlayer1 = [];
-let initialHandPlayer2 = [];
-let isPlayer1 = false;
-let isPlayer2 = true;
-
-let box1;
-let box2;
-
-let gameReadyToStart = false;
+let handP1 = [];
+let handP2 = [];
+let cards1 = []; // Card instances for P1
+let cards2 = []; // Card instances for P2
+let order = null;
+let activePlayer = null;
 let websocket;
+let gameReadyToStart = false;
+
+let imgForest, imgBear, imgMountain, imgBolt, imgBack;
+let cardsMap;
+
+// End Turn button geometry
+let endTurnBtn = { x: 320, y: 10, w: 160, h: 60 };
+
+const iAmPlayer1 = () => order === '1';
+const iAmPlayer2 = () => order === '2';
+const iAmActive = () => order != null && activePlayer === order;
 
 function preload() {
-  img1 = loadImage('assets/forest.jpg');
-  img2 = loadImage('assets/grizzly_bear.jpg');
-  img3 = loadImage('assets/island.jpg');
-  img4 = loadImage('assets/mountain.jpg');
-  img5 = loadImage('assets/plains.jpg');
-  img6 = loadImage('assets/rampant_growth.jpg');
-  img7 = loadImage('assets/swamp.jpg');
-  img8 = loadImage('assets/lightning_bolt.jpg');
+  imgForest = loadImage('assets/forest.jpg');
+  imgBear = loadImage('assets/grizzly_bear.jpg');
+  imgMountain = loadImage('assets/mountain.jpg');
+  imgBolt = loadImage('assets/lightning_bolt.jpg');
+  imgBack = loadImage('assets/card-back.jpg');
 }
 
 function setup() {
-  let playerId = null;
-  websocket = new WebSocket("ws://localhost:9090");
+  createCanvas(windowWidth, windowHeight);
+
+  cardsMap = {
+    forest: imgForest,
+    grizzly_bear: imgBear,
+    mountain: imgMountain,
+    lightning_bolt: imgBolt,
+  };
+
+  websocket = new WebSocket(getWsURL());
+
   websocket.onmessage = (message) => {
     const response = JSON.parse(message.data);
 
-    if (response.method === "connect") {
-      playerId = response.playerId;
-      console.log("Player id configurado ->" + playerId)
+    if (response.method === 'connect') {
+      order = response.order;
+      console.log("order", response.order);
+
+      if (iAmPlayer1()) {
+        dealCardsOnce(handP1, ['mountain', 'lightning_bolt']);
+      }
+      if (iAmPlayer2()) {
+        dealCardsOnce(handP2, ['forest', 'grizzly_bear']);
+      }
+
+      buildHands();
     }
 
-    if (response.method === "numPlayers") {
-      if (response.number === 1) {
-        isPlayer1 = true;
-        isPlayer2 = false;
-      }
-      if (response.number === 2) {
-        gameReadyToStart = true;
-      }
+    if (response.method === 'numPlayers') {
+      gameReadyToStart = (response.number === 2);
     }
-  }
-  createCanvas(windowWidth, windowHeight);
-  prepareDeck();
 
-  box1 = {
-    x: width * 0.05,
-    y: height * 0.08,
-    w: width * 0.9,
-    h: height * 0.42
-  }
+    if (response.method === 'disconnect') {
+      gameReadyToStart = false;
+    }
 
-  box2 = {
-    x: width * 0.05,
-    y: height * 0.50,
-    w: width * 0.9,
-    h: height * 0.42
-  }
+    // NEW: server tells everyone whose turn it is
+    if (response.method === 'turn') {
+      activePlayer = response.activePlayer;
+      // console.log('Turn is now for Player', activePlayer);
+    }
 
-  const cardWidth = width * 0.06;
-  const cardHeight = height * 0.16;
-  const spacing = (width - cardWidth * colNum) / (colNum + 1);
+    if (response.method === 'cardPlayed') {
+      const { owner, name } = response;
 
-  for (let i = 0; i < colNum; i++) {
-      const x = spacing + i * (cardWidth + spacing);
-      const img1 = selected.pop();
-      const img2 = selected.pop();
-      initialHandPlayer1.push(new Card(x, height * 0.19, cardWidth, cardHeight, `Player1 ${i + 1}`, 'Player1', img1));
-      initialHandPlayer2.push(new Card(x, height * 0.65, cardWidth, cardHeight, `Player2 ${i + 1}`, 'Player2', img2));
-  }
+      const cardW = width * 0.06;
+      const cardH = height * 0.16;
+      const spacing = cardW * 0.3;
+
+      const targetArray = owner === 'Player1' ? cards1 : cards2;
+      const idx = targetArray.filter(c => c.enteredBattlefield && c.owner === owner).length;
+      const x = (width * 0.07) + idx * (cardW + spacing);
+      const y = owner === 'Player1' ? (height * 0.86 - 46) : (height * 0.14 + 46);
+
+      targetArray.push(
+        new Card(x, y, cardW, cardH, name, owner, cardsMap[name], false)
+      );
+      targetArray[targetArray.length - 1].enteredBattlefield = true;
+    }
+  };
+
+  initBoxes();
 }
 
 function draw() {
   background(220);
+  drawBoxes();
 
-  //Player1
-  fill(130, 139, 20);
-  stroke(0);
-  rect(box1.x, box1.y, box1.w, box1.h, 10);
+  if (!order) return;
 
-  fill(170, 160, 150);
-  stroke(0);
-  rect(box2.x, box2.y, box2.w, box2.h, 10);
 
-  if (gameReadyToStart) {
-        // for (let card of cards1) {
-        //   card.hover();
-        //   card.display();
-        // }
-      //  if (isPlayer1) {
-      //   console.log("Player 1")
-      //   for (let card of initialHandPlayer1) {
-      //     card.hover();
-      //     card.display();
-      //   }
-      //  } else {
-      //   console.log("Player 2");
-      //   for (let card of initialHandPlayer2) {
-      //     card.hover();
-      //     card.display();
-      //   }
-      //  }
+  for (const c of [...cards1, ...cards2]) { c.hover(); c.display(); }
 
-      dealCards();
-       if (isPlayer1) {
-        console.log("is Player 1")
-       }
-
-       if (isPlayer2) {
-        console.log("is Player 2")
-       }
-  }
-
-  // Handle flip comparison
-  if (flippedCards.length === 2 && frameCount - timer > delay) {
-    const [c1, c2] = flippedCards;
-
-    if (c1.picked === c2.picked) {
-      c1.set = true;
-      c2.set = true;
-      matchedCards.push(c1, c2);
-    } else {
-      c1.isFaceUp = false;
-      c2.isFaceUp = false;
-    }
-
-    flippedCards = [];
-    timer = -1;
-  }
-
+  drawTurnBanner();
+  drawEndTurnButton();
 }
 
-function prepareDeck() {
-  const faceImages = [
-    img1, img2, img3, img4,
-    img5, img6, img7, img8
-  ];
-  selected = [];
-
-  for (let img of faceImages) {
-    selected.push(img);
-    selected.push(img); // duplicate each image
+function keyPressed() {
+  if (key === 't' || key === 'T') {
+    sendEndTurn();
   }
-
-  shuffle(selected, true);
 }
 
+function sendEndTurn() {
+  if (!iAmActive()) return;
+  if (!gameReadyToStart) return;
+  websocket.send(JSON.stringify({ method: 'endTurn' }));
+}
 
-let redDeck = ["mountain, lightning_bolt"];
-let greenDeck = ["forest", "grizzly_bear"];
+function dealCardsOnce(targetHand, deckNames) {
+  for (let i = 0; i < 7; i++) {
+    const pick = deckNames[Math.floor(Math.random() * deckNames.length)];
+    targetHand.push(pick);
+  }
+}
 
-function dealCards() {
-  for (i = 1; i < 8; i++) {
-    const OneTwo = Math.floor(Math.random() * 2) + 1;
-    console.log("OneTwo", OneTwo);
+function buildHands() {
+  const cardW = width * 0.06;
+  const cardH = height * 0.16;
+
+  cards1 = [];
+  cards2 = [];
+
+  const spacing = cardW * 0.3;
+
+  for (let i = 0; i < handP1.length; i++) {
+    const x = (width * 0.07) + i * (cardW + spacing);
+    const y = height * 0.86;
+    const name = handP1[i];
+
+    const hidden = !iAmPlayer1();
+    cards1.push(new Card(x, y, cardW, cardH, name, 'Player1', cardsMap[name], hidden));
+  }
+
+  for (let i = 0; i < handP2.length; i++) {
+    const x = (width * 0.07) + i * (cardW + spacing);
+    const y = height * 0.14;
+    const name = handP2[i];
+
+    const hidden = !iAmPlayer2();
+    cards2.push(new Card(x, y, cardW, cardH, name, 'Player2', cardsMap[name], hidden));
   }
 }
 
 function mouseClicked() {
-
-  for (let i = 0; i < cards1.length; i++) {
-    let card = cards1[i];
-    if (
-      mouseX > card.x - card.w / 2 &&
-      mouseX < card.x + card.w / 2 &&
-      mouseY > card.y - card.h / 2 &&
-      mouseY < card.y + card.h / 2
-    ) {
-      console.log(`You clicked on Player1 card ${i + 1} ->>>>>>>> ${card.label}`);
-      card.moveUp(card.label);
-      break;
-    }
+  // End Turn button click
+  if (mouseX >= endTurnBtn.x && mouseX <= endTurnBtn.x + endTurnBtn.w &&
+      mouseY >= endTurnBtn.y && mouseY <= endTurnBtn.y + endTurnBtn.h) {
+    sendEndTurn();
+    return;
   }
 
-  for (let i = 0; i < cards2.length; i++) {
-    let card = cards2[i];
-    if (
-      mouseX > card.x - card.w / 2 &&
-      mouseX < card.x + card.w / 2 &&
-      mouseY > card.y - card.h / 2 &&
-      mouseY < card.y + card.h / 2
-    ) {
-      console.log(`You clicked on Player2 card ${i + 1} ->>>>>>>>> ${card.label}`);
-      card.moveUp(card.label);
+  // Play card (only if my turn)
+  if (!iAmActive()) return;
+  const mine = iAmPlayer1() ? cards1 : cards2;
+
+  for (const card of mine) {
+    if (card.contains(mouseX, mouseY)) {
+      card.moveUp();
       break;
     }
   }
 }
-   
 
 class Card {
-  constructor(x, y, w, h, label, player, picked) {
+  constructor(x, y, widthPx, heightPx, name, owner, faceImage, hidden) {
+    this.x = x; this.y = y; this.w = widthPx; this.h = heightPx;
+    this.name = name; this.owner = owner;
+    this.faceImage = faceImage;
+    this.hidden = hidden;
     this.enteredBattlefield = false;
-    this.x = x;
-    this.y = y; 
-    this.w = w;
-    this.h = h;
-    this.label = label;
-    this.player = player;
-    this.picked = picked;
-    this.isFaceUp = true;
-    this.set = false;
-    this.hoverBool = false;
+    this.hovered = false;
     this.rotated = false;
   }
 
-  body() {
-    rectMode(CENTER);
-    fill(this.set ? color(150, 255, 150) : this.hoverBool ? 160 : 200);
-    rect(this.x, this.y, this.w, this.h, 10);
+  contains(mouseXPos, mouseYPos) {
+    return mouseXPos > this.x - this.w/2 && mouseXPos < this.x + this.w/2 &&
+           mouseYPos > this.y - this.h/2 && mouseYPos < this.y + this.h/2;
   }
 
-  rotateCard() {
-    this.rotated = true;
-  }
-
-  moveUp(label) {
-    if (this.label === label && this.enteredBattlefield === false) {
-      this.player === 'Player1' ? this.y = this.y + 46 : this.y = this.y - 46;
+  moveUp() {
+    if (!this.enteredBattlefield) {
+      this.y += (this.owner === 'Player1') ? -46 : 46;
       this.enteredBattlefield = true;
-    } else {
-      this.rotateCard();
-    }
-    
-  }
 
+      this.hidden = false;
+
+      websocket?.send(JSON.stringify({
+        method: 'playCard',
+        owner: this.owner,
+        name: this.name
+      }))
+    } else {
+      this.rotated = !this.rotated;
+    }
+  }
 
   hover() {
-    this.hoverBool = (
-      mouseX > this.x - this.w / 2 &&
-      mouseX < this.x + this.w / 2 &&
-      mouseY > this.y - this.h / 2 &&
-      mouseY < this.y + this.h / 2
-    );
+    this.hovered = this.contains(mouseX, mouseY);
   }
 
   display() {
-    if (this.isFaceUp || this.set) {
-    imageMode(CENTER);
     push();
+    imageMode(CENTER);
     translate(this.x, this.y);
-
-    if (this.rotated) {
-      rotate(HALF_PI); 
+    if (this.rotated) rotate(HALF_PI);
+    if (this.hovered) {
+      noFill(); stroke(0); strokeWeight(2);
+      rectMode(CENTER); rect(0, 0, this.w + 6, this.h + 6, 10);
     }
-
-    fill(150, 255, 150);
-
-    image(this.picked, 0, 0, this.w, this.h);
-
+    image(this.hidden ? imgBack : this.faceImage, 0, 0, this.w, this.h);
     pop();
   }
-  }
+}
+
+let box1, box2;
+function initBoxes() {
+  box1 = { x: width*0.05, y: height*0.08, w: width*0.9, h: height*0.42 };
+  box2 = { x: width*0.05, y: height*0.50, w: width*0.9, h: height*0.42 };
+}
+function drawBoxes() {
+  fill(130, 139, 20); stroke(0); rect(box1.x, box1.y, box1.w, box1.h, 10);
+  fill(170, 160, 150); stroke(0); rect(box2.x, box2.y, box2.w, box2.h, 10);
+}
+
+function drawTurnBanner() {
+  const label = activePlayer ? `Turn: Player ${activePlayer}` : 'Turn: ?';
+  const mine  = order ? `You are Player ${order}${iAmActive() ? ' (ACTIVE)' : ''}` : 'You are ?';
+
+  noStroke();
+  fill(0, 0, 0, 160);
+  rect(10, 10, 290, 60, 8);
+
+  fill(255);
+  textSize(16);
+  textAlign(LEFT, TOP);
+  text(label, 20, 18);
+  text(mine, 20, 42);
+}
+
+function drawEndTurnButton() {
+  const isEnabled = iAmActive() && gameReadyToStart;
+  const isHover =
+    mouseX >= endTurnBtn.x && mouseX <= endTurnBtn.x + endTurnBtn.w &&
+    mouseY >= endTurnBtn.y && mouseY <= endTurnBtn.y + endTurnBtn.h;
+
+  push();
+  noStroke();
+  fill(isEnabled ? (isHover ? 30 : 50) : 90, 140, 40, isEnabled ? 230 : 120);
+  rect(endTurnBtn.x, endTurnBtn.y, endTurnBtn.w, endTurnBtn.h, 8);
+
+  fill(255);
+  textSize(14);
+  textAlign(CENTER, CENTER);
+  text(isEnabled ? 'End Turn (T)' : 'Waiting...', endTurnBtn.x + endTurnBtn.w/2, endTurnBtn.y + endTurnBtn.h/2);
+  pop();
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  initBoxes();
+  if (order) buildHands();
+}
+
+function getWsURL() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${proto}://${location.host}`;
 }
