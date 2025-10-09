@@ -1,4 +1,5 @@
-
+import { Card } from "./models/Card.js";
+import { MyWebsocket } from "./Websocket/MyWebsocket.js";
 
 const mySketch = (p) => {
   let handP1 = [];
@@ -7,7 +8,7 @@ const mySketch = (p) => {
   let cards2 = []; 
   let order = null;
   let activePlayer = null;
-  let websocket;
+  let socket;
   let gameReadyToStart = false;
 
   let imgForest, imgBear, imgMountain, imgBolt, imgBack;
@@ -37,89 +38,73 @@ const mySketch = (p) => {
       lightning_bolt: imgBolt,
     };
 
-    websocket = new WebSocket(getWsURL());
+    socket = new MyWebsocket(getWsURL());
 
-    websocket.onmessage = (message) => {
-      const response = JSON.parse(message.data);
+    socket.on('connect', (res) => {
+      order = res.order;
 
-      if (response.method === 'connect') {
-        order = response.order;
-
-        if (iAmPlayer1()) {
-          dealCardsOnce(handP1, ['mountain', 'lightning_bolt']);
-          websocket.send(JSON.stringify({ method: 'handCount', owner: 'Player1', count: handP1.length }));
-        }
-        if (iAmPlayer2()) {
-          dealCardsOnce(handP2, ['forest', 'grizzly_bear']);
-          websocket.send(JSON.stringify({ method: 'handCount', owner: 'Player2', count: handP2.length }));
-        }
-
-        buildHands();
+      if (iAmPlayer1()) {
+        dealCardsOnce(handP1, ['mountain', 'lightning_bolt']);
+        socket.send({ method: 'handCount', owner: 'Player1', count: handP1.length });
+      }
+      if (iAmPlayer2()) {
+        dealCardsOnce(handP2, ['forest', 'grizzly_bear']);
+        socket.send({ method: 'handCount', owner: 'Player2', count: handP2.length });
       }
 
-      if (response.method === 'numPlayers') {
-        gameReadyToStart = (response.number === 2);
-        if (gameReadyToStart) {
-          const owner = iAmPlayer1() ? 'Player1' : 'Player2';
-          const count = iAmPlayer1() ? handP1.length : handP2.length;
-          websocket.send(JSON.stringify({ method: 'handCount', owner, count }));
-        }
+      buildHands();
+    });
+
+    socket.on('numPlayers', (res) => {
+      gameReadyToStart = (res.number === 2);
+      if (gameReadyToStart) {
+        const owner = iAmPlayer1() ? 'Player1': 'Player2';
+        const count = iAmPlayer1() ? handP1.length : handP2.length;
+        socket.send({ method: 'handCount', owner, count });
       }
+    });
 
-      if (response.method === 'disconnect') {
-        gameReadyToStart = false;
-      }
+    socket.on('disconnect', () => { gameReadyToStart = false });
+    socket.on('turn', (res) => { activePlayer = res.activePlayer });
 
-      if (response.method === 'turn') {
-        activePlayer = response.activePlayer;
-      }
+    socket.on('cardPlayed', ({ owner, name }) => {
+      const cardW = p.width * 0.06;
+      const cardH = p.height * 0.16;
+      const spacing = cardW * 0.3;
 
-      if (response.method === 'cardPlayed') {
-        const { owner, name } = response;
+      const target = owner === 'Player1' ? cards1 : cards2;
+      const idx = target.filter(card => card.enteredBattlefield && card.owner === owner).length;
+      const x = (p.width * 0.07) + idx * (cardW + spacing);
+      const y = owner === 'Player1' ? (p.height * 0.86 - 46) : (p.height * 0.14 + 46);
 
-        const cardW = p.width * 0.06;
-        const cardH = p.height * 0.16;
-        const spacing = cardW * 0.3;
+      const handIndex = target.findIndex(card => !card.enteredBattlefield && card.owner === owner);
+      if (handIndex !== -1) target.splice(handIndex, 1);
 
-        const targetArray = owner === 'Player1' ? cards1 : cards2;
-        const idx = targetArray.filter(c => c.enteredBattlefield && c.owner === owner).length;
-        const x = (p.width * 0.07) + idx * (cardW + spacing);
-        const y = owner === 'Player1' ? (p.height * 0.86 - 46) : (p.height * 0.14 + 46);
+      target.push(new Card(x, y, cardW, cardH, name, owner, cardsMap[name], false, { p, imgBack }));
+      target[target.length - 1].enteredBattlefield = true;
+    });
 
-        const handIndex = targetArray.findIndex(card => !card.enteredBattlefield && card.owner === owner);
-        if (handIndex !== -1) targetArray.splice(handIndex, 1);
+    socket.on('opponentHandCount', ({ owner, count}) => {
+      const cardW = p.width * 0.06;
+      const cardH = p.height * 0.16;
+      const spacing = cardW * 0.3;
 
-        targetArray.push(new Card(x, y, cardW, cardH, name, owner, cardsMap[name], false));
-        targetArray[targetArray.length - 1].enteredBattlefield = true;
-      }
+      const target = owner === 'Player1' ? cards1 : cards2;
+      const isMine = (owner === 'Player1' && iAmPlayer1()) || (owner === 'Player2' && iAmPlayer2());
+      if (isMine) return;
 
-      if (response.method === 'opponentHandCount') {
-        const { owner, count } = response;
-
-        const cardW = p.width * 0.06;
-        const cardH = p.height * 0.16;
-        const spacing = cardW * 0.3;
-
-        const targetArray = owner === 'Player1' ? cards1 : cards2;
-        const isMyPerspective =
-          (owner === 'Player1' && iAmPlayer1()) ||
-          (owner === 'Player2' && iAmPlayer2());
-
-        if (isMyPerspective) return;
-
-        for (let i = targetArray.length - 1; i >= 0; i--) {
-          if (!targetArray[i].enteredBattlefield && targetArray[i].owner === owner) {
-            targetArray.splice(i, 1);
-          }
-        }
-
-        for (let i = 0; i < count; i++) {
-          const x = (p.width * 0.07) + i * (cardW + spacing);
-          const y = owner === 'Player1' ? p.height * 0.86 : p.height * 0.14;
-          targetArray.push(new Card(x, y, cardW, cardH, 'unknown', owner, null, true));
+      for (let i = target.length -1; i >= 0; i--) {
+        if (!target[i].enteredBattlefield && target[i].owner === owner) {
+          target.splice(i, 1);
         }
       }
-    };
+
+      for (let i = 0; i < count; i++) {
+        const x = (p.width * 0.07) + i * (cardW + spacing);
+        const y = owner === 'Player1' ? p.height * 0.86 : p.height * 0.14;
+        target.push(new Card(x, y, cardW, cardH, 'unknown', owner, null, true, { p, imgBack }))
+      }
+    })
 
     initBoxes();
   };
@@ -166,9 +151,8 @@ const mySketch = (p) => {
   };
 
   function sendEndTurn() {
-    if (!iAmActive()) return;
-    if (!gameReadyToStart) return;
-    websocket.send(JSON.stringify({ method: 'endTurn' }));
+    if (!iAmActive() || !gameReadyToStart) return;
+    socket.send({ method: 'endTurn' });
   }
 
   function dealCardsOnce(targetHand, deckNames) {
@@ -181,84 +165,37 @@ const mySketch = (p) => {
   function buildHands() {
     const cardW = p.width * 0.06;
     const cardH = p.height * 0.16;
+    const spacing = cardW * 0.3;
 
     cards1 = [];
     cards2 = [];
 
-    const spacing = cardW * 0.3;
+    const make = (x, y, name, owner, hidden) =>
+      new Card(x, y, cardW, cardH, name, owner, cardsMap[name], hidden, {
+        p,
+        imgBack,
+        onPlay: ({ owner, name }) => socket.send({ method: 'playCard', owner, name })
+      })
 
+  
     for (let i = 0; i < handP1.length; i++) {
       const x = (p.width * 0.07) + i * (cardW + spacing);
       const y = p.height * 0.86;
-      const name = handP1[i];
-
       const hidden = !iAmPlayer1();
-      cards1.push(new Card(x, y, cardW, cardH, name, 'Player1', cardsMap[name], hidden));
+      cards1.push(make(x, y, handP1[i], 'Player1', hidden));
     }
 
     for (let i = 0; i < handP2.length; i++) {
       const x = (p.width * 0.07) + i * (cardW + spacing);
       const y = p.height * 0.14;
-      const name = handP2[i];
-
       const hidden = !iAmPlayer2();
-      cards2.push(new Card(x, y, cardW, cardH, name, 'Player2', cardsMap[name], hidden));
-    }
+      cards2.push(make(x, y, handP2[i], 'Player2', hidden));
+    }    
   }
 
 
-  class Card {
-    constructor(x, y, widthPx, heightPx, name, owner, faceImage, hidden) {
-      this.x = x; this.y = y; this.w = widthPx; this.h = heightPx;
-      this.name = name; this.owner = owner;
-      this.faceImage = faceImage;
-      this.hidden = hidden;
-      this.enteredBattlefield = false;
-      this.hovered = false;
-      this.rotated = false;
-    }
 
-    contains(mx, my) {
-      return mx > this.x - this.w/2 && mx < this.x + this.w/2 &&
-             my > this.y - this.h/2 && my < this.y + this.h/2;
-    }
 
-    moveUp() {
-      if (!this.enteredBattlefield) {
-        this.y += (this.owner === 'Player1') ? -46 : 46;
-        this.enteredBattlefield = true;
-
-        this.hidden = false;
-
-        websocket?.send(JSON.stringify({
-          method: 'playCard',
-          owner: this.owner,
-          name: this.name
-        }));
-      } else {
-        this.rotated = !this.rotated;
-      }
-    }
-
-    hover(mx, my) {
-      this.hovered = this.contains(mx, my);
-    }
-
-    display() {
-      p.push();
-      p.imageMode(p.CENTER);
-      p.translate(this.x, this.y);
-      if (this.rotated) p.rotate(p.HALF_PI);
-      if (this.hovered) {
-        p.noFill(); p.stroke(0); p.strokeWeight(2);
-        p.rectMode(p.CENTER); p.rect(0, 0, this.w + 6, this.h + 6, 10);
-      }
-      p.image(this.hidden ? imgBack : this.faceImage, 0, 0, this.w, this.h);
-      p.pop();
-    }
-  }
-
-  // ---------- UI drawing ----------
 
   let box1, box2;
   function initBoxes() {
