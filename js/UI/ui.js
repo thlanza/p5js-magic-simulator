@@ -1,3 +1,7 @@
+import { CONSTANTS } from "../CONSTANTS";
+
+
+
 export class UI {
     constructor(p) {
       this.p = p;
@@ -5,10 +9,10 @@ export class UI {
 
     drawBoxes(box1, box2) {
         const p = this.p;
-        p.fill(130, 139, 20); 
+        p.fill(CONSTANTS.COLORS.box1.r, CONSTANTS.COLORS.box1.g, CONSTANTS.COLORS.box2.b); 
         p.stroke(0); 
         p.rect(box1.x, box1.y, box1.w, box1.h, 10);
-        p.fill(170, 160, 150); 
+        p.fill(CONSTANTS.COLORS.box2.r, CONSTANTS.COLORS.box2.g, CONSTANTS.COLORS.box2.b); 
         p.stroke(0); 
         p.rect(box2.x, box2.y, box2.w, box2.h, 10);
     }
