@@ -50,7 +50,7 @@ wsServer.on("request", request => {
 
     if (path === '/livereload') {
         const conn = request.accept(null, request.origin);
-        lrClients.add(conn)/
+        lrClients.add(conn);
         console.log("Livereload client connected");
         conn.on('close', () => lrClients.delete(conn));
         return;
