@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "start": "node --watch server.js"
+    "start": "node --watch server.js",
+    "test": "vitest run",
+    "test:watch": "vitest --watch",
+    "coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "",
@@ -12,7 +15,13 @@
   "dependencies": {
     "chokidar": "^4.0.3",
     "express": "^5.1.0",
-    "uuid": "^11.1.0",
-    "websocket": "^1.0.35"
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.2",
+    "happy-dom": "^20.0.8",
+    "vitest": "^4.0.2",
+    "websocket": "^1.0.35",
+    "ws": "^8.18.3"
   }
 }

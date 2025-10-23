@@ -41,7 +41,11 @@ function sendToOthers(senderId, payloadObj) {
   const json = JSON.stringify(payloadObj);
   for (const p of players) {
     if (p.playerId === senderId) continue;
-    try { p.connection.send(json); } catch (e) { console.log('Erro mandando para o outro', e); }
+    try { 
+        p.connection.send(json); 
+    } catch (e) { 
+        console.log('Erro mandando para o outro', e); 
+    }
   }
 }
 
@@ -210,3 +214,13 @@ watcher.on('add', pingReload);
 watcher.on('change', pingReload);
 watcher.on('unlink', pingReload);
 
+module.exports = {
+    httpServer,
+    wsServer,
+    start: () => httpServer.listen(PORT),
+    stop: () => {
+        try { wsServer.shutDown(); } catch {}
+        try { httpServer.close(); } catch {}
+    },
+    port: PORT
+}

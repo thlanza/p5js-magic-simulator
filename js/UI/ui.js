@@ -1,4 +1,4 @@
-import { CONSTANTS } from "../CONSTANTS";
+import { CONSTANTS } from "../CONSTANTS.js";
 
 
 
