@@ -1,16 +1,32 @@
+import { cardDb } from "/shared/cardDb.js";
+
+
 export class Game {
   constructor() {
     this.landsPlayedThisTurn = { Player1: 0, Player2: 0 };
     this.activePlayerOrder = null;
 
-    this.cardDb = {
-      mountain: { type: "land", produces: { red: 1 } },
-      forest: { type: "land", produces: { green: 1 } },
+    this.lifeTotals = { Player1: 20, Player2: 20 };
 
-      lightning_bolt: { type: "spell", cost: { red: 1 } },
+    this.cardDb = cardDb;
+  }
 
-      grizzly_bear: { type: "creature", cost: { green: 1, generic: 1 } },
-    };
+  untapPermanentsForOwner({ owner, battlefieldCardsForOwner }) {
+    const effects = [];
+
+    for (const cardInstance of battlefieldCardsForOwner) {
+      const cardInfo = this.cardDb?.[cardInstance.name];
+      if (!cardInfo) continue;
+
+      const isPermanent = cardInfo.type === "land" || cardInfo.type === "creature";
+      
+      if (!isPermanent) continue;
+
+      if (cardInstance.rotated === true) {
+        effects.push({ type: "untap", cards: [cardInstance] });
+      }
+    }
+    return effects;
   }
 
   setActivePlayerOrder(activePlayerOrder) {
@@ -27,6 +43,10 @@ export class Game {
     if (order === "1") return "Player1";
     if (order === "2") return "Player2";
     return null;
+  }
+
+  otherOwner(owner) {
+    return owner === "Player1" ? "Player2" : "Player1";
   }
 
   canPlayCard({
@@ -104,6 +124,52 @@ export class Game {
     return { ok: false, reason: "unsupported_cost" };
   }
 
+  resolvePlayEffects({ owner, cardName }) {
+    const cardInfo = this.cardDb[cardName];
+    if (!cardInfo) return [];
+
+    if (!Array.isArray(cardInfo.effectsOnResolve)) return [];
+
+    const effects = [];
+
+    for (const effect of cardInfo.effectsOnResolve) {
+      if (effect.type === "damagePlayer") {
+        const resolvedTarget =
+          effect.target === "opponent" ? this.otherOwner(owner): effect.target;
+
+        effects.push({
+          type: "damagePlayer",
+          target: resolvedTarget,
+          amount: effect.amount,
+          source: cardName,
+          owner
+        });
+        continue;
+    }
+    effects.push(effect);
+    }
+    return effects;
+  }
+
+  resolveAttackEffects({ owner, cardName }) {
+    const cardInfo = this.cardDb[cardName];
+    if (!cardInfo) return { ok: false, reason: "unknown_card", effects: [] };
+    if (cardInfo.type !== "creature") return { ok: false, reason: "not_a_creature", effects: [] };
+
+    const damageAmount = Number(cardInfo.power ?? 0);
+    if (damageAmount <= 0) return { ok: false, reason: "no_power", effects: [] };
+
+    return {
+      ok: true,
+      effects: [{
+        type: "damagePlayer",
+        target: this.otherOwner(owner),
+        amount: damageAmount,
+        source: cardName,
+        owner
+      }]
+    }
+  } 
   applyEffects(effects) {
     if (!effects) return;
 
@@ -116,8 +182,25 @@ export class Game {
       if (effect.type === "tap") {
         for (const cardInstance of effect.cards) {
           cardInstance.rotated = true;
-        }
+        };
+        continue;
       }
+
+      if (effect.type === "untap") {
+        for (const cardInstance of effect.cards) {
+          cardInstance.rotated = false;
+        }
+        continue;
+      }
+
+      if (effect.type === "damagePlayer") {
+        const targetOwner = effect.target;
+        const amount = Number(effect.amount ?? 0);
+        if (!targetOwner || amount <= 0) continue;
+
+        this.lifeTotals[targetOwner] = Math.max(0, (this.lifeTotals[targetOwner] ?? 20) - amount);
+        continue;
     }
   }
+}
 }

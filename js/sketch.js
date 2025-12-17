@@ -6,6 +6,9 @@ import { MyWebsocket } from "./Websocket/MyWebsocket.js";
 
 let rules;
 
+let lifeTotals = { Player1: 20, Player2: 20 };
+
+
 const mySketch = (p) => {
   let handP1 = [];
   let handP2 = [];
@@ -20,6 +23,7 @@ const mySketch = (p) => {
 
   let imgForest, imgBear, imgMountain, imgBolt, imgBack;
   let cardsMap;
+  let opponentHandCounts = { Player1: 0, Player2: 0 };
 
   const endTurnBtn = { x: CONSTANTS.BUTTON_MEASUREMENTS.x, 
     y: CONSTANTS.BUTTON_MEASUREMENTS.y, 
@@ -53,6 +57,11 @@ const mySketch = (p) => {
 
     socket = new MyWebsocket(getWsURL());
 
+    socket.on("life", (payload) => {
+        lifeTotals = payload.lifeTotals;
+    });
+
+
     socket.on('connect', (res) => {
       order = res.order;
 
@@ -81,6 +90,18 @@ const mySketch = (p) => {
     socket.on('turn', (res) => { 
       activePlayer = res.activePlayer;
       rules.setActivePlayerOrder(activePlayer); 
+
+      const activeOwner = activePlayer === '1' ? 'Player1' : 'Player2';
+      const battlefieldCardsForActiveOwner = activeOwner === 'Player1'
+        ? cards1.filter((cardInstance) => cardInstance.enteredBattlefield && cardInstance.owner === 'Player1')
+        : cards2.filter((cardInstance) => cardInstance.enteredBattlefield && cardInstance.owner === 'Player2');
+
+      const untapEffects = rules.untapPermanentsForOwner({
+        owner: activeOwner,
+        battlefieldCardsForOwner: battlefieldCardsForActiveOwner
+      });
+
+      rules.applyEffects(untapEffects);
     });
 
     socket.on('cardPlayed', ({ owner, name }) => {
@@ -101,25 +122,8 @@ const mySketch = (p) => {
     });
 
     socket.on('opponentHandCount', ({ owner, count}) => {
-      const cardW = p.width * 0.06;
-      const cardH = p.height * 0.16;
-      const spacing = cardW * 0.3;
-
-      const target = owner === 'Player1' ? cards1 : cards2;
-      const isMine = (owner === 'Player1' && iAmPlayer1()) || (owner === 'Player2' && iAmPlayer2());
-      if (isMine) return;
-
-      for (let i = target.length -1; i >= 0; i--) {
-        if (!target[i].enteredBattlefield && target[i].owner === owner) {
-          target.splice(i, 1);
-        }
-      }
-
-      for (let i = 0; i < count; i++) {
-        const x = (p.width * 0.07) + i * (cardW + spacing);
-        const y = owner === 'Player1' ? p.height * 0.86 : p.height * 0.14;
-        target.push(new Card(x, y, cardW, cardH, 'unknown', owner, null, true, { p, imgBack }))
-      }
+      opponentHandCounts[owner] = count;
+      applyOpponentHandCount(owner, count);
     })
 
     initBoxes();
@@ -144,6 +148,7 @@ const mySketch = (p) => {
   p.draw = function () {
     p.background(220);
     ui.drawBoxes(box1, box2);
+    ui.drawLife({ lifeTotals });
     ui.drawTurnBanner({
       activePlayer,
       order,
@@ -204,6 +209,37 @@ const mySketch = (p) => {
     }
   }
 
+  function applyOpponentHandCount(owner, count) {
+      const cardW = p.width * 0.06;
+      const cardH = p.height * 0.16;
+      const spacing = cardW * 0.3;
+
+      const target = owner === "Player1" ? cards1 : cards2;
+
+      const isMine =
+        (owner === "Player1" && iAmPlayer1()) ||
+        (owner === "Player2" && iAmPlayer2());
+
+      if (isMine) return;
+
+    
+      for (let index = target.length - 1; index >= 0; index--) {
+        if (!target[index].enteredBattlefield && target[index].owner === owner) {
+          target.splice(index, 1);
+        }
+      }
+
+      for (let index = 0; index < count; index++) {
+        const x = p.width * 0.07 + index * (cardW + spacing);
+        const y = owner === "Player1" ? p.height * 0.86 : p.height * 0.14;
+
+        target.push(
+          new Card(x, y, cardW, cardH, "unknown", owner, null, true, { p, imgBack })
+        );
+      }
+  }
+
+
   function buildHands() {
     const cardW = p.width * 0.06;
     const cardH = p.height * 0.16;
@@ -242,7 +278,15 @@ const mySketch = (p) => {
             return decision;
           },
           onPlay: ({ owner: playOwner, name: playName }) =>
-            socket.send({ method: 'playCard', owner: playOwner, name: playName })
+            socket.send({ method: 'playCard', owner: playOwner, name: playName }),
+          onBattlefieldClick: ({ owner: clickOwner, name: clickName, rotated }) => {
+          if (rotated !== true) return;
+          if (!iAmActive() || !gameReadyToStart) return;
+          const cardInfo = rules.cardDb?.[clickName];
+          if (!cardInfo || cardInfo.type !== "creature") return;
+          socket.send({ method: "attack", owner: clickOwner, name: clickName });
+        },
+
     });
   
     for (let i = 0; i < handP1.length; i++) {
@@ -258,6 +302,9 @@ const mySketch = (p) => {
       const hidden = !iAmPlayer2();
       cards2.push(make(x, y, handP2[i], 'Player2', hidden));
     }    
+
+    applyOpponentHandCount('Player1', opponentHandCounts['Player1']);
+    applyOpponentHandCount('Player2', opponentHandCounts['Player2']);
   }
 
   p.windowResized = function () {

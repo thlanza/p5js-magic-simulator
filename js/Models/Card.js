@@ -19,6 +19,7 @@ export class Card {
 
     this.canPlay = deps.canPlay;
     this.onPlay = deps.onPlay;
+    this.onBattlefieldClick = deps.onBattlefieldClick;
   }
 
   contains(mx, my) {
@@ -45,6 +46,15 @@ export class Card {
     }
 
     this.rotated = !this.rotated;
+
+    if (this.onBattlefieldClick) {
+      this.onBattlefieldClick({
+        owner: this.owner,
+        name: this.name,
+        rotated: this.rotated,
+        cardInstance: this
+      });
+    }
   }
 
   hover(mx, my) {

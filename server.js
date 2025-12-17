@@ -1,12 +1,20 @@
-const http = require('http');
-const express = require("express");
-const uuid = require('uuid').v4
-const { server: WebSocketServer } = require('websocket');
-const chokidar = require('chokidar');
+import http from "http";
+import express from "express";
+import { v4 as uuid } from 'uuid';
+
+import websocketPkg from 'websocket';
+const { server: WebSocketServer } = websocketPkg;
+import chokidar from 'chokidar';
+import { cardDb } from './shared/cardDb.js';
+import path from "path";
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use("/js", express.static(__dirname + '/js'));
 app.use('/assets', express.static(__dirname + '/assets'));
+app.use("/shared", express.static(__dirname + "/shared"));
 app.get("/", (req, res) => res.sendFile(__dirname + "/index.html"));
 
 const PORT = process.env.PORT || 5500;
@@ -48,6 +56,74 @@ function sendToOthers(senderId, payloadObj) {
     }
   }
 }
+
+const lifeTotals = { Player1: 20, Player2: 20 };
+
+function otherOwner(owner) {
+  return owner === "Player1" ? "Player2" : "Player1";
+}
+
+
+function normalizeEffectTargets({ owner, effects }) {
+  return effects.map((effect) => {
+    if (effect.type !== "damagePlayer") return effect;
+
+    const resolvedTarget =
+      effect.target === "opponent" ? otherOwner(owner) :
+      effect.target === "self" ? owner :
+      effect.target;
+
+    return { ...effect, target: resolvedTarget };
+  });
+}
+
+
+function resolveOnPlayEffects({ owner, cardName }) {
+  const cardInfo = cardDb[cardName];
+  const effectsOnResolve = Array.isArray(cardInfo?.effectsOnResolve) ? cardInfo.effectsOnResolve : [];
+  return normalizeEffectTargets({ owner, effects: effectsOnResolve });
+}
+
+
+function resolveOnAttackEffects({ owner, cardName }) {
+  const cardInfo = cardDb[cardName];
+  if (!cardInfo) return { ok: false, reason: "unknown_card", effects: [] };
+  if (cardInfo.type !== "creature") return { ok: false, reason: "not_a_creature", effects: [] };
+
+  const power = Number(cardInfo.power ?? 0);
+  if (power <= 0) return { ok: false, reason: "no_power", effects: [] };
+
+  return {
+    ok: true,
+    effects: normalizeEffectTargets({
+      owner,
+      effects: [{ type: "damagePlayer", target: "opponent", amount: power, source: cardName }],
+    }),
+  };
+}
+
+function applyServerEffects(effects) {
+  if (!Array.isArray(effects)) return;
+
+  for (const effect of effects) {
+    if (effect.type === "damagePlayer") {
+      const target = effect.target; // must be Player1/Player2 by now
+      const amount = Number(effect.amount ?? 0);
+
+      if (target !== "Player1" && target !== "Player2") continue;
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+
+      lifeTotals[target] = Math.max(0, lifeTotals[target] - amount);
+    }
+  }
+}
+
+function broadcastLife() {
+  broadcast({ method: "life", lifeTotals });
+}
+
+
+
 
 wsServer.on("request", request => {
     const path = request.resourceURL?.pathname || '/';
@@ -167,6 +243,17 @@ wsServer.on("request", request => {
             } catch(error) {
                 console.log("Erro no cardPlayed no servidor", error);
             }
+
+            const effects = resolveOnPlayEffects({ owner: result.owner, cardName: result.name });
+            applyServerEffects(effects);
+            broadcastLife();
+        }
+        if (result.method === "attack") {
+            const decision = resolveOnAttackEffects({ owner: result.owner, cardName: result.name });
+            if (!decision.ok) return;
+
+            applyServerEffects(decision.effects);
+            broadcastLife();
         }
         if (result.method === "handCount") {
             const me = getPlayerByConnection(connection);
@@ -214,13 +301,17 @@ watcher.on('add', pingReload);
 watcher.on('change', pingReload);
 watcher.on('unlink', pingReload);
 
-module.exports = {
-    httpServer,
-    wsServer,
-    start: () => httpServer.listen(PORT),
-    stop: () => {
-        try { wsServer.shutDown(); } catch {}
-        try { httpServer.close(); } catch {}
-    },
-    port: PORT
+export {
+  httpServer,
+  wsServer,
+  PORT as port,
+};
+
+export function start() {
+  httpServer.listen(PORT);
+}
+
+export function stop() {
+  try { wsServer.shutDown(); } catch {}
+  try { httpServer.close(); } catch {}
 }

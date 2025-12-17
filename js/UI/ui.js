@@ -50,4 +50,19 @@ export class UI {
         p.text(isEnabled ? 'Finalizar Turno (T)' : 'Esperando...', btn.x + btn.w/2, btn.y + btn.h/2);
         p.pop();
     }
+
+    drawLife({ lifeTotals }) {
+        const p = this.p;
+        p.push();
+        p.noStroke();
+        p.fill(0, 0, 0, 160);
+        p.rect(p.width - 180, 10, 170, 60, 8);
+
+        p.fill(255);
+        p.textSize(14);
+        p.textAlign(p.LEFT, p.TOP);
+        p.text(`P1: ${lifeTotals.Player1}`, p.width - 170, 18);
+        p.text(`P2: ${lifeTotals.Player2}`, p.width - 170, 40);
+        p.pop();
+    }
 }
