@@ -2,6 +2,8 @@ export class MyWebsocket {
     constructor(url) {
         this.ws = new WebSocket(url);
         this.handlers = {};
+        this.pending = {};
+
         this.ws.onmessage = (event) => {
             let data;
             try {
@@ -10,13 +12,30 @@ export class MyWebsocket {
                 console.log("Erro no parsing dos dados no onMessage do Websocket");
                 return;
             }
-            this.emit(data.method, data);
+
+            const method = data?.method;
+
+            const list = this.handlers[method];
+
+            if (!list || list.length === 0) {
+                if (!this.pending[method]) this.pending[method] = [];
+                this.pending[method].push(data);
+                return;
+            }
+
+            this.emit(method, data);
         }
     }
 
     on(method, cb) {
         if (!this.handlers[method]) this.handlers[method] = [];
         this.handlers[method].push(cb);
+
+        const queued = this.pending[method];
+        if (queued && queued.length > 0) {
+            for (const payload of queued) cb(payload);
+            delete this.pending[method];
+        }
     }
 
     emit(method, payload) {

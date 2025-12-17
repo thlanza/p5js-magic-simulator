@@ -1,7 +1,10 @@
 import { CONSTANTS } from "./CONSTANTS.js";
-import { Card } from "./models/Card.js";
+import { Card } from "./Models/Card.js";
+import { Game } from "./Models/Game.js";
 import { UI } from "./UI/ui.js";
 import { MyWebsocket } from "./Websocket/MyWebsocket.js";
+
+let rules;
 
 const mySketch = (p) => {
   let handP1 = [];
@@ -37,6 +40,7 @@ const mySketch = (p) => {
   };
 
   p.setup = function () {
+    rules = new Game();
     p.createCanvas(p.windowWidth, p.windowHeight);
     ui = new UI(p);
 
@@ -74,7 +78,10 @@ const mySketch = (p) => {
     });
 
     socket.on('disconnect', () => { gameReadyToStart = false });
-    socket.on('turn', (res) => { activePlayer = res.activePlayer });
+    socket.on('turn', (res) => { 
+      activePlayer = res.activePlayer;
+      rules.setActivePlayerOrder(activePlayer); 
+    });
 
     socket.on('cardPlayed', ({ owner, name }) => {
       const cardW = p.width * 0.06;
@@ -205,13 +212,38 @@ const mySketch = (p) => {
     cards1 = [];
     cards2 = [];
 
-    const make = (x, y, name, owner, hidden) =>
-      new Card(x, y, cardW, cardH, name, owner, cardsMap[name], hidden, {
-        p,
-        imgBack,
-        onPlay: ({ owner, name }) => socket.send({ method: 'playCard', owner, name })
-      })
+    const getBattlefieldCardsForOwner = (owner) => {
+      const targetArray = owner === "Player1" ? cards1 : cards2;
+      return targetArray.filter((cardInstance) => cardInstance.enteredBattlefield && cardInstance.owner === owner);
+    };
 
+    const make = (x, y, name, owner, hidden) =>
+        new Card(x, y, cardW, cardH, name, owner, cardsMap[name], hidden, {
+          p,
+          imgBack,
+          canPlay: ({ owner: playOwner, name: playName }) => {
+            const battlefieldCardsForOwner = getBattlefieldCardsForOwner(playOwner);
+
+            const decision = rules.canPlayCard({
+              order,
+              activePlayerOrder: activePlayer,
+              gameReadyToStart,
+              owner: playOwner,
+              cardName: playName,
+              battlefieldCardsForOwner,
+            });
+
+            if (decision.ok) {
+              rules.applyEffects(decision.effects); 
+            } else {
+              console.log("Play blocked:", decision.reason);
+            }
+
+            return decision;
+          },
+          onPlay: ({ owner: playOwner, name: playName }) =>
+            socket.send({ method: 'playCard', owner: playOwner, name: playName })
+    });
   
     for (let i = 0; i < handP1.length; i++) {
       const x = (p.width * 0.07) + i * (cardW + spacing);
@@ -239,5 +271,7 @@ const mySketch = (p) => {
     return `${proto}://${location.host}`;
   }
 };
+
+
 
 new p5(mySketch);
