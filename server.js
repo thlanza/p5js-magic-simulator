@@ -44,6 +44,10 @@ function getPlayerByConnection(connection) {
     return players.find(p => p.connection === connection);
 }
 
+function isGameReady() {
+    return players.length === 2;
+}
+
 function sendToOthers(senderId, payloadObj) {
   const json = JSON.stringify(payloadObj);
   for (const p of players) {
@@ -137,9 +141,9 @@ function broadcastLife() {
 
 
 wsServer.on("request", request => {
-    const path = request.resourceURL?.pathname || '/';
+    const urlPath = request.resourceURL?.pathname || '/';
 
-    if (path === '/livereload') {
+    if (urlPath === '/livereload') {
         const conn = request.accept(null, request.origin);
         lrClients.add(conn);
         console.log("Livereload client connected");
@@ -161,7 +165,7 @@ wsServer.on("request", request => {
     
     const takenOrders = new Set(players.map(p => p.order));
     const order = takenOrders.has("1") ? "2": "1";
-    let playerInfo = { playerId, order, connection };
+    const playerInfo = { playerId, order, connection };
     players.push(playerInfo);
 
     connection.send(JSON.stringify({
@@ -169,10 +173,6 @@ wsServer.on("request", request => {
         playerId,
         order
     }));
-
-    if (players.length === 2 && (activePlayer !== '1' && activePlayer !== '2')) {
-        activePlayer = '1';
-    }
 
     broadcast({ method: "numPlayers", number: players.length });
     broadcast({ method: "turn", activePlayer});
@@ -214,27 +214,11 @@ wsServer.on("request", request => {
             return;
         }
 
-        if (result.method === "firstHand") {
-            const me = getPlayerByConnection(connection);
-            const otherPlayers = players.filter(p => p.playerId !== playerId);
-            for (const other of otherPlayers) {
-                const payload = {
-                    method: 'currentPlayers',
-                    player: me.playerId
-                };
-                try {
-                    other.connection.send(JSON.stringify(payload));
-                } catch(error) {
-                    console.log("Erro no onMessage do servidor", error);
-                }
-            }
-        }
-
         if (result.method === "endTurn") {
             const me = getPlayerByConnection(connection);
             if (!me) return;
 
-            if (players.length < 2) return;
+            if (!isGameReady()) return;
 
             if (me.order !== activePlayer) return;
 
@@ -245,6 +229,7 @@ wsServer.on("request", request => {
         if (result.method === "playCard") {
             const me = getPlayerByConnection(connection);
             if (!me) return;
+            if (!isGameReady()) return;
             const other = players.filter(p => p.playerId !== me.playerId);
             const payload = JSON.stringify({
                 method: "cardPlayed",
@@ -262,6 +247,10 @@ wsServer.on("request", request => {
             broadcastLife();
         }
         if (result.method === "attack") {
+            const me = getPlayerByConnection(connection);
+            if (!me) return;
+            if (!isGameReady()) return;
+
             const decision = resolveOnAttackEffects({ owner: result.owner, cardName: result.name });
             if (!decision.ok) return;
 

@@ -1,27 +1,34 @@
 import { CONSTANTS } from "../CONSTANTS.js";
 
-
-
 export class UI {
     constructor(p) {
-      this.p = p;
+        this.p = p;
     }
 
     drawBoxes(box1, box2) {
         const p = this.p;
-        p.fill(CONSTANTS.COLORS.box1.r, CONSTANTS.COLORS.box1.g, CONSTANTS.COLORS.box2.b); 
-        p.stroke(0); 
+        const { box1: color1, box2: color2 } = CONSTANTS.COLORS;
+
+        p.push();
+        p.stroke(0);
+
+        p.fill(color1.r, color1.g, color1.b);
         p.rect(box1.x, box1.y, box1.w, box1.h, 10);
-        p.fill(CONSTANTS.COLORS.box2.r, CONSTANTS.COLORS.box2.g, CONSTANTS.COLORS.box2.b); 
-        p.stroke(0); 
+
+        p.fill(color2.r, color2.g, color2.b);
         p.rect(box2.x, box2.y, box2.w, box2.h, 10);
+
+        p.pop();
     }
 
     drawTurnBanner({ activePlayer, order, isActive }) {
         const p = this.p;
         const label = activePlayer ? `Turno: Hora do Jogador ${activePlayer}` : 'Turno: Espere sua vez.';
-        const mine  = order ? `Você é o jogador ${order}${isActive ? ' (ACTIVE)' : ''}` : 'Você é? ?';
+        const mine = order
+            ? `Você é o jogador ${order}${isActive ? ' (sua vez)' : ''}`
+            : 'Conectando...';
 
+        p.push();
         p.noStroke();
         p.fill(0, 0, 0, 160);
         p.rect(10, 10, 290, 60, 8);
@@ -31,6 +38,7 @@ export class UI {
         p.textAlign(p.LEFT, p.TOP);
         p.text(label, 20, 18);
         p.text(mine, 20, 42);
+        p.pop();
     }
 
     drawEndTurnButton({ btn, isEnabled, mouseX, mouseY }) {
@@ -47,7 +55,7 @@ export class UI {
         p.fill(255);
         p.textSize(14);
         p.textAlign(p.CENTER, p.CENTER);
-        p.text(isEnabled ? 'Finalizar Turno (T)' : 'Esperando...', btn.x + btn.w/2, btn.y + btn.h/2);
+        p.text(isEnabled ? 'Finalizar Turno (T)' : 'Esperando...', btn.x + btn.w / 2, btn.y + btn.h / 2);
         p.pop();
     }
 
