@@ -19,7 +19,6 @@ app.get("/", (req, res) => res.sendFile(__dirname + "/index.html"));
 
 const PORT = process.env.PORT || 5500;
 const httpServer = http.createServer(app);
-httpServer.listen(PORT, () => console.log(`HTTP escutando na porta ${PORT}`));
 
 const wsServer = new WebSocketServer({ httpServer });
 
@@ -57,7 +56,19 @@ function sendToOthers(senderId, payloadObj) {
   }
 }
 
-const lifeTotals = { Player1: 20, Player2: 20 };
+const STARTING_LIFE = 20;
+const lifeTotals = { Player1: STARTING_LIFE, Player2: STARTING_LIFE };
+
+function resetLifeTotals() {
+    lifeTotals.Player1 = STARTING_LIFE;
+    lifeTotals.Player2 = STARTING_LIFE;
+}
+
+// Ponto único de término da partida.
+function endGame({ leavingOrder }) {
+    lastHandCount[leavingOrder] = null;
+    resetLifeTotals();
+}
 
 function otherOwner(owner) {
   return owner === "Player1" ? "Player2" : "Player1";
@@ -147,7 +158,9 @@ wsServer.on("request", request => {
     }
 
     const playerId = uuid();
-    const order = players.length === 0 ? "1" : "2";
+    
+    const takenOrders = new Set(players.map(p => p.order));
+    const order = takenOrders.has("1") ? "2": "1";
     let playerInfo = { playerId, order, connection };
     players.push(playerInfo);
 
@@ -271,6 +284,7 @@ wsServer.on("request", request => {
         const leaving = getPlayerByConnection(connection);
         if (leaving) {
             players = players.filter(p => p.playerId !== leaving.playerId);
+            endGame({ leavingOrder: leaving.order });
         }
         if (players.length === 1) activePlayer = players[0].order; 
         if (players.length === 0) activePlayer = '1';
@@ -278,6 +292,7 @@ wsServer.on("request", request => {
         broadcast({ method: "disconnect", playerId: leaving?.playerId });
         broadcast({ method: "numPlayers", number: players.length });
         broadcast({ method: "turn", activePlayer });
+        broadcastLife();
     })   
 });
 
@@ -308,10 +323,13 @@ export {
 };
 
 export function start() {
-  httpServer.listen(PORT);
+  httpServer.listen(PORT, () => console.log(`HTTP escutando na porta ${PORT}`));
 }
 
 export function stop() {
   try { wsServer.shutDown(); } catch {}
   try { httpServer.close(); } catch {}
 }
+
+const isRunDirectly = process.argv[1] && path.resolve(process.argv[1]) === __filename;
+if (isRunDirectly) start();

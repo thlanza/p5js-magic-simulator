@@ -509,4 +509,56 @@ describe("server.js (unit)", () => {
     // Leaing player should not receive broadcasts after removal
     expect(connectionPlayer1.send).not.toHaveBeenCalled();
   })
+
+    it("assigns the free seat: after Player1 leaves, the next player gets order '1'", async () => {
+    const { requestHandler } = await importFreshServerModule();
+
+    const connectionPlayer1 = createFakeWsConnection();
+    requestHandler(createFakeWsRequest({ pathname: "/", connection: connectionPlayer1 }));
+
+    const connectionPlayer2 = createFakeWsConnection();
+    requestHandler(createFakeWsRequest({ pathname: "/", connection: connectionPlayer2 }));
+
+    // Player1 leaves; Player2 keeps seat "2"
+    connectionPlayer1.__emitClose();
+
+    // A new player joins and must take the free seat "1"
+    const connectionPlayer3 = createFakeWsConnection();
+    requestHandler(createFakeWsRequest({ pathname: "/", connection: connectionPlayer3 }));
+
+    const messagesPlayer3 = parseSentJsonMessages(connectionPlayer3);
+    expect(messagesPlayer3).toContainEqual(
+      expect.objectContaining({ method: "connect", playerId: "uuid-3", order: "1" })
+    );
+  });
+
+    it("does not start listening just by being imported", async () => {
+    await importFreshServerModule();
+    const httpMock = await import("http");
+    const httpServer = httpMock.__getHttpServerMock();
+
+    expect(httpServer.listen).not.toHaveBeenCalled();
+  });
+
+  it("start() makes the HTTP server listen exactly once", async () => {
+    const { serverModule } = await importFreshServerModule();
+    const httpMock = await import("http");
+    const httpServer = httpMock.__getHttpServerMock();
+
+    serverModule.start();
+
+    expect(httpServer.listen).toHaveBeenCalledTimes(1);
+  });
+
+  it("stop() shuts down the WebSocket server and closes the HTTP server", async () => {
+    const { serverModule, wsServerInstance } = await importFreshServerModule();
+    const httpMock = await import("http");
+    const httpServer = httpMock.__getHttpServerMock();
+
+    serverModule.stop();
+
+    expect(wsServerInstance.shutDown).toHaveBeenCalledTimes(1);
+    expect(httpServer.close).toHaveBeenCalledTimes(1);
+  });
+  
 });
