@@ -22,12 +22,39 @@ export class Card {
     this.onBattlefieldClick = deps.onBattlefieldClick;
   }
 
+  // Tamanho em que a carta é desenhada (proporção real de carta de Magic, 63:88).
+  // Usado tanto pelo desenho quanto pela área de clique.
+  drawSize() {
+    const p = this.p;
+    const cardAspect = 63 / 88;
+
+    let drawW = p.width / 25;
+    let drawH = drawW / cardAspect;
+
+    const maxH = p.height * 0.18;
+    if (drawH > maxH) {
+      drawH = maxH;
+      drawW = drawH * cardAspect;
+    }
+
+    return { drawW, drawH };
+  }
+
+
   contains(mx, my) {
+    const { drawW, drawH } = this.drawSize();
+
+    // Carta virada é desenhada deitada: largura e altura trocam
+    const halfW = (this.rotated ? drawH : drawW) / 2;
+    const halfH = (this.rotated ? drawW : drawH) / 2;
+
     return (
-      mx > this.x - this.w / 2 && mx < this.x + this.w / 2 &&
-      my > this.y - this.h / 2 && my < this.y + this.h / 2
+      mx > this.x - halfW && mx < this.x + halfW &&
+      my > this.y - halfH && my < this.y + halfH
     );
   }
+
+  
 
   moveUp() {
     if (!this.enteredBattlefield) {
@@ -45,7 +72,9 @@ export class Card {
       return;
     }
 
-    this.rotated = !this.rotated;
+    if (this.rotated) return;
+
+    this.rotated = true;
 
     if (this.onBattlefieldClick) {
       this.onBattlefieldClick({
@@ -64,15 +93,7 @@ export class Card {
   display() {
     const p = this.p;
 
-    const cardAspect = 63 / 88;
-    let drawW = p.width / 25;
-    let drawH = drawW / cardAspect;
-
-    const maxH = p.height * 0.18;
-    if (drawH > maxH) {
-      drawH = maxH;
-      drawW = drawH * cardAspect;
-    }
+    const { drawW, drawH } = this.drawSize();
 
     p.push();
     p.imageMode(p.CENTER);
