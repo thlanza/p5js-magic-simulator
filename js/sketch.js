@@ -19,6 +19,7 @@ const mySketch = (p) => {
   let activePlayer = null;
   let socket;
   let gameReadyToStart = false;
+  let roomFull = false;
   let box1, box2;
 
   let imgForest, imgBear, imgMountain, imgBolt, imgBack;
@@ -87,6 +88,7 @@ const mySketch = (p) => {
     });
 
     socket.on('disconnect', () => { gameReadyToStart = false });
+    socket.on('roomFull', () => { roomFull = true });
     socket.on('turn', (res) => { 
       activePlayer = res.activePlayer;
       rules.setActivePlayerOrder(activePlayer); 
@@ -152,7 +154,9 @@ const mySketch = (p) => {
     ui.drawTurnBanner({
       activePlayer,
       order,
-      isActive: iAmActive()
+      isActive: iAmActive(),
+      gameReadyToStart,
+      roomFull
     });
     ui.drawEndTurnButton({
       btn: endTurnBtn,

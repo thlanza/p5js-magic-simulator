@@ -21,12 +21,24 @@ export class UI {
         p.pop();
     }
 
-    drawTurnBanner({ activePlayer, order, isActive }) {
+    drawTurnBanner({ activePlayer, order, isActive, gameReadyToStart, roomFull }) {
         const p = this.p;
-        const label = activePlayer ? `Turno: Hora do Jogador ${activePlayer}` : 'Turno: Espere sua vez.';
-        const mine = order
-            ? `Você é o jogador ${order}${isActive ? ' (sua vez)' : ''}`
-            : 'Conectando...';
+
+        let label;
+        let mine;
+        if (roomFull) {
+            label = 'Sala cheia';
+            mine = 'Já há 2 jogadores na partida.';
+        } else if (!order) {
+            label = 'Conectando...';
+            mine = '';
+        } else if (!gameReadyToStart) {
+            label = 'Aguardando oponente...';
+            mine = `Você é o jogador ${order}`;
+        } else {
+            label = `Turno: Hora do Jogador ${activePlayer}`;
+            mine = `Você é o jogador ${order}${isActive ? ' (sua vez)': ''}`;
+        }
 
         p.push();
         p.noStroke();

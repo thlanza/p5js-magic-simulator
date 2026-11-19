@@ -222,16 +222,53 @@ describe("MyWebsocket (client)", () => {
     expect(handlerB).toHaveBeenCalledWith({ method: "B", value: 2 });
   });
 
-  it("if a message has no method, it will be queued under 'undefined' and flushed if someone subscribes to undefined", () => {
+   it.each([
+    ["CLOSING", FakeWebSocket.CLOSING],
+    ["CLOSED", FakeWebSocket.CLOSED],
+  ])("send(obj) with the socket %s does not wait for 'open' (it would never come) and warns", (_, state) => {
     const instance = new MyWebsocket("ws://example");
     const fakeSocket = instance.ws;
+    fakeSocket.readyState = state;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    instance.send({ method: "endTurn" });
+
+    expect(fakeSocket.send).not.toHaveBeenCalled();
+    expect(fakeSocket.addEventListener).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it("keeps calling the other handlers when one of them throws, and logs the error", () => {
+    const instance = new MyWebsocket("ws://example");
+    const fakeSocket = instance.ws;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const failingHandler = vi.fn(() => {
+      throw new Error("boom");
+    });
+    const healthyHandler = vi.fn();
+    instance.on("turn", failingHandler);
+    instance.on("turn", healthyHandler);
+
+    expect(() =>
+      fakeSocket.__fireMessage(JSON.stringify({ method: "turn", activePlayer: "2" }))
+    ).not.toThrow();
+
+    expect(healthyHandler).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalled();
+  });
+
+  it("ignores messages without a method and warns (they are not queued)", () => {
+    const instance = new MyWebsocket("ws://example");
+    const fakeSocket = instance.ws;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     fakeSocket.__fireMessage(JSON.stringify({ hello: "world" }));
 
     const handler = vi.fn();
     instance.on(undefined, handler);
 
-    expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler).toHaveBeenCalledWith({ hello: "world" });
+    expect(handler).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
   });
 });
