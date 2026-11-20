@@ -31,6 +31,7 @@ export const CONSTANTS = {
             g: 160,
             b: 50
         }
-    }
+    },
+    SPELL_RESOLVE_DELAY_MS: 4000
 }
 

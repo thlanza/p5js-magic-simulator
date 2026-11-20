@@ -13,6 +13,7 @@ export class Card {
     this.enteredBattlefield = false;
     this.hovered = false;
     this.rotated = false;
+    this.resolving = false; // mágica no campo aguardando resolução (não clicável)
 
     this.p = deps.p;
     this.imgBack = deps.imgBack;
@@ -68,11 +69,11 @@ export class Card {
       this.enteredBattlefield = true;
       this.hidden = false;
 
-      if (this.onPlay) this.onPlay({ owner: this.owner, name: this.name });
+      if (this.onPlay) this.onPlay({ owner: this.owner, name: this.name, cardInstance: this });
       return;
     }
 
-    if (this.rotated) return;
+    if (this.rotated || this.resolving) return;
 
     this.rotated = true;
 

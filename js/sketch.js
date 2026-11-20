@@ -66,25 +66,16 @@ const mySketch = (p) => {
     socket.on('connect', (res) => {
       order = res.order;
 
-      if (iAmPlayer1()) {
-        dealCardsOnce(handP1, ['mountain', 'lightning_bolt']);
-        socket.send({ method: 'handCount', owner: 'Player1', count: handP1.length });
-      }
-      if (iAmPlayer2()) {
-        dealCardsOnce(handP2, ['forest', 'grizzly_bear']);
-        socket.send({ method: 'handCount', owner: 'Player2', count: handP2.length });
-      }
+      if (iAmPlayer1()) dealCardsOnce(handP1, ['mountain', 'lightning_bolt']);
+      if (iAmPlayer2()) dealCardsOnce(handP2, ['forest', 'grizzly_bear']);
 
       buildHands();
+      sendHandCount();
     });
 
     socket.on('numPlayers', (res) => {
       gameReadyToStart = (res.number === 2);
-      if (gameReadyToStart) {
-        const owner = iAmPlayer1() ? 'Player1': 'Player2';
-        const count = iAmPlayer1() ? handP1.length : handP2.length;
-        socket.send({ method: 'handCount', owner, count });
-      }
+      if (gameReadyToStart) sendHandCount();
     });
 
     socket.on('disconnect', () => { gameReadyToStart = false });
@@ -119,8 +110,11 @@ const mySketch = (p) => {
       const handIndex = target.findIndex(card => !card.enteredBattlefield && card.owner === owner);
       if (handIndex !== -1) target.splice(handIndex, 1);
 
-      target.push(new Card(x, y, cardW, cardH, name, owner, cardsMap[name], false, { p, imgBack }));
-      target[target.length - 1].enteredBattlefield = true;
+      const playedCard = new Card(x, y, cardW, cardH, name, owner, cardsMap[name], false, { p, imgBack });
+      playedCard.enteredBattlefield = true;
+      target.push(playedCard);
+
+      if (isSpell(name)) resolveSpellLater(playedCard);
     });
 
     socket.on('opponentHandCount', ({ owner, count}) => {
@@ -206,6 +200,34 @@ const mySketch = (p) => {
     socket.send({ method: 'endTurn' });
   }
 
+  const myOwner = () => (iAmPlayer1() ? 'Player1' : 'Player2');
+
+  // Cartas que estão de fato na minha mão (as que ainda não entraram no campo).
+  function myHandSize() {
+    const mine = iAmPlayer1() ? cards1 : cards2;
+    return mine.filter((card) => card.owner === myOwner() && !card.enteredBattlefield).length;
+  }
+
+  // Ponto único de envio da contagem da mão ao servidor.
+  function sendHandCount() {
+    socket.send({ method: 'handCount', owner: myOwner(), count: myHandSize() });
+  }
+  
+
+  function isSpell(cardName) {
+    return rules.cardDb[cardName]?.type === 'spell';
+  }
+
+  function resolveSpellLater(cardInstance) {
+    cardInstance.resolving = true;
+
+    setTimeout(() => {
+      const cards = cardInstance.owner === 'Player1' ? cards1: cards2;
+      const index = cards.indexOf(cardInstance);
+      if(index !== -1) cards.splice(index, 1);
+    }, CONSTANTS.SPELL_RESOLVE_DELAY_MS)
+  }
+
   function dealCardsOnce(targetHand, deckNames) {
     for (let i = 0; i < 7; i++) {
       const pick = deckNames[Math.floor(Math.random() * deckNames.length)];
@@ -281,8 +303,11 @@ const mySketch = (p) => {
 
             return decision;
           },
-          onPlay: ({ owner: playOwner, name: playName }) =>
-            socket.send({ method: 'playCard', owner: playOwner, name: playName }),
+          onPlay: ({ owner: playOwner, name: playName, cardInstance }) => {
+            socket.send({ method: 'playCard', owner: playOwner, name: playName });
+            sendHandCount();
+            if (isSpell(playName)) resolveSpellLater(cardInstance);
+          },
           onBattlefieldClick: ({ owner: clickOwner, name: clickName, rotated }) => {
           if (rotated !== true) return;
           if (!iAmActive() || !gameReadyToStart) return;
