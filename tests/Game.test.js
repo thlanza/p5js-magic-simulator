@@ -47,8 +47,45 @@ describe("Game.canPlayCard: lands", () => {
 
         const decision = game.canPlayCard(playArgs({ cardName: "mountain" }));
 
-        expect(decision)
-    })
+        expect(decision).toEqual({
+            ok: true,
+            effects: [{ type: "incrementLandPlayed", owner: "Player1", amount: 1 }]
+        })
+    });
+
+    it("refuses a second land in the same turn", () => {
+        const game = new Game();
+        game.setActivePlayerOrder("1");
+
+        game.applyEffects(Game.canPlayCard(playArgs({ cardName: "mountain" })).effects);
+        const decision = game.canPlayCard(playArgs({ cardName: "mountain" }));
+
+        expect(decision).toEqual({ ok: false, reason: "land_limit" });
+    });
+
+    it("allows a land again then the player's next turn starts", () => {
+        const game = new Game();
+        game.setActivePlayerOrder("1");
+        game.applyEffects(game.canPlayCard(playArgs({ cardName: "mountain"})).effects);
+
+        game.setActivePlayerOrder("2"); // opponent's turn
+        game.setActivePlayerOrder("1"); // my turn again
+
+        expect(game.canPlayCard(playArgs({ cardName: "mountain" })).ok).toBe(true);
+    });
+
+    it("does not reset the land counter when the same turn is announced again", () => {
+        const game = new Game();
+        game.setActivePlayerOrder("1");
+        game.applyEffects(game.canPlayCard(playArgs({ cardName: "mountain" })).effects);
+
+        // The server re-broadcasts 'turn' (e.ge. when someone connects): still the same turn
+        game.setActivePlayerOrder("1");
+
+        expect(game.canPlayCard(playArgs({ cardName: "mountain" }))).toEqual({ ok: false, reason: "land_limit" });
+    });
+
+    
 })
 
 
